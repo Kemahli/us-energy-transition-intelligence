@@ -18,17 +18,65 @@ The objective is to identify each dataset's analytical role, grain, historical c
 ## Planned Fact Tables
 
 ### FactGeneration
-Expected source:
-- EIA-923
+### EIA-923 Power Plant Operations
 
-Potential fields:
-- Date
-- Plant ID
-- Fuel type
-- Prime mover / technology
-- Net generation
+**Role in project:**  
+Primary operational fact source for electricity generation and fuel use.
+
+**Provider:**  
+U.S. Energy Information Administration (EIA)
+
+**Historical coverage:**  
+- Utility plant operating data available back to 1970
+- Nonutility plant data available from 1999
+- Detailed modern EIA-923 format from 2008 onward
+
+**Update frequency:**  
+- Preliminary monthly releases
+- Final annual releases
+- Historical records may be revised
+
+**Current release pattern:**  
+Monthly operating data are published with a reporting lag and may later be revised.
+
+**Main analytical content:**  
+- Net electricity generation
 - Fuel consumption
-- Fuel cost
+- Fuel receipts
+- Fuel costs
+- Fossil fuel stocks
+- Prime mover information
+- Plant-level operational data
+
+**Important identifiers:**  
+- Plant ID
+- Plant name
+- Reporting period
+- Fuel code
+- Prime mover
+- Operator / utility identifiers where available
+
+**Expected Power BI role:**  
+Primary source for FactGeneration and selected fuel-related operational measures.
+
+**Key modeling concern:**  
+The grain is not simply Plant × Month.  
+Some records are differentiated by:
+- Fuel
+- Prime mover
+- Plant
+- Reporting period
+
+Therefore the exact row grain must be verified before constructing keys or aggregations.
+
+**Refresh strategy:**  
+Monthly automated refresh with support for historical revisions.
+
+**Validation requirements:**  
+- Check duplicate combinations of Plant ID + Period + Fuel + Prime Mover
+- Reconcile annual totals against EIA published totals
+- Verify units before aggregation
+- Preserve revised historical values
 
 ### FactCapacity
 Expected source:
