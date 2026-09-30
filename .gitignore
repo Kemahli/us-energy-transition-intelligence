@@ -219,3 +219,9 @@ __marimo__/
 
 # API credentials
 .env
+
+# Local data files
+data/raw/*.csv
+data/raw/*.json
+data/processed/*.csv
+data/processed/*.parquet
