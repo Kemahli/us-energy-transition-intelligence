@@ -606,3 +606,171 @@ Remaining EIA-860 related work:
 - optional ingestion of proposed changes to existing generators from historical PCGEN files
 - optional EIA-860M monthly incremental refresh layer
 - later dimensional modeling for DimGenerator, DimPlant, technology, fuel, and geography
+
+
+## EIA-861M Monthly Retail Sales, Revenue, Customers, and Prices
+
+### Purpose
+
+EIA-861M provides monthly state-level retail electricity data.
+
+This project uses the source for:
+
+- retail electricity sales
+- retail revenue
+- customer counts
+- published average retail electricity prices
+- sector-level electricity market analysis
+
+The historical workbook currently covers 2010 through the latest published 2026 month.
+
+### Source Structure
+
+The primary historical workbook is:
+
+`data/raw/eia861m_sales_revenue_2010_current.xlsx`
+
+The analytical source sheet is:
+
+`Monthly-States`
+
+The source is stored in wide format.
+
+Each row represents:
+
+`Year × Month × State`
+
+Sector groups are stored as repeated column blocks:
+
+- Residential
+- Commercial
+- Industrial
+- Transportation
+- Total
+
+Each sector contains:
+
+- Revenue
+- Sales
+- Customers
+- Price
+
+### Source Grain Validation
+
+The `Monthly-States` sheet contains:
+
+- 10,149 source rows
+- 2010 through July 2026
+- 51 state/DC codes
+- 0 duplicate `Year × Month × State` rows
+
+Coverage:
+
+- 2010-2025: 612 source rows per year
+- 2026: 357 source rows through July
+
+### Canonical Analytical Grain
+
+The ingestion pipeline converts the wide source into long format.
+
+Canonical grain:
+
+`Period × State × Sector`
+
+Sectors:
+
+- Residential
+- Commercial
+- Industrial
+- Transportation
+- Total
+
+The canonical output is:
+
+`data/processed/fact_retail_prices_2010_current.csv`
+
+Current output:
+
+- 50,745 rows
+- 2010-01 through 2026-07
+- 51 state/DC codes
+- 5 sectors
+- 0 duplicate `Period × State × Sector` rows
+- 0 missing values in core analytical fields
+
+### Current Workbook Reconciliation
+
+The current utility-level workbook includes special records such as:
+
+- Utility Number `0`: State Adjustment
+- Utility Number `88888`: State Total
+- State code `US`: national total
+
+The historical `Monthly-States` sheet is used directly as the authoritative state aggregate layer.
+
+Utility-level rows are not re-aggregated to reconstruct state totals.
+
+A controlled 2026 comparison between historical state aggregates and current `State Total` rows found:
+
+- 357 matching state-month records
+- exact customer-count agreement
+- maximum revenue difference of about 0.055 thousand dollars
+- maximum sales difference of about 0.501 MWh
+
+The additional 7 current records were U.S. national total rows and are not part of the 51-state/DC grain.
+
+### Published Total Sector
+
+The source includes a published `Total` sector.
+
+This value is preserved directly.
+
+It is not reconstructed by summing Residential, Commercial, Industrial, and Transportation.
+
+Source-level comparisons show small differences between reported Total revenue/sales and recomputed component sums.
+
+### Retail Price Handling
+
+The published EIA price field is preserved as:
+
+`price_cents_per_kwh`
+
+A derived revenue-to-sales price is used only for validation.
+
+The validation formula is:
+
+`revenue_thousand_dollars × 100 / sales_mwh`
+
+Across 46,350 nonzero-sales records:
+
+- 82 rows differed by more than 0.01 cents/kWh
+- all 82 were Transportation records
+- only 4 differed by more than 0.05 cents/kWh
+- only 1 differed by more than 0.10 cents/kWh
+- maximum difference was approximately 0.154 cents/kWh
+
+The differing records were all very low-volume Transportation observations.
+
+Because the source does not explicitly establish the cause of these differences, the published EIA price is retained rather than overwritten by the derived calculation.
+
+### Zero-Sales Records
+
+There are 4,395 zero-sales rows.
+
+All are in the Transportation sector.
+
+For these rows, the published price is 0.0 cents/kWh.
+
+These records are retained as valid source observations.
+
+### Current Status
+
+Historical EIA-861M state-level retail sales, revenue, customer, and price ingestion:
+
+**DONE + VALIDATED**
+
+Remaining EIA-861M related work:
+
+- refresh/update strategy for newly published months
+- optional utility-level analysis
+- later dimensional integration with geography and date tables
