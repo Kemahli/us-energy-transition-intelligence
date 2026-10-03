@@ -774,3 +774,221 @@ Remaining EIA-861M related work:
 - refresh/update strategy for newly published months
 - optional utility-level analysis
 - later dimensional integration with geography and date tables
+
+---
+
+## EPA CAMPD Monthly Facility Emissions
+
+### Source
+
+EPA Clean Air Markets Program Data (CAMPD) API
+
+Endpoint used:
+
+`https://api.epa.gov/easey/streaming-services/emissions/apportioned/monthly/by-facility`
+
+Historical coverage used in this project:
+
+- January 2001 through December 2025
+
+The API was queried one month at a time to avoid multi-month request instability and to handle rate-limit behavior safely.
+
+### Source Grain
+
+Validated source grain:
+
+`Year × Month × Facility ID`
+
+Equivalent project analytical grain:
+
+`Period × Facility ID`
+
+Historical ingestion results:
+
+- 407,535 rows
+- 1,814 unique facilities
+- 51 state / territory codes
+- 0 duplicate `Period × Facility ID` rows
+- 0 missing identifiers
+
+The facility identifier, facility name, state code, year, and month were complete across the processed dataset.
+
+### Fields Retained
+
+The processed emissions fact includes:
+
+- `period`
+- `year`
+- `month`
+- `state`
+- `facility_id`
+- `facility_name`
+- `eia_plant_code_candidate`
+- `gross_load_mwh`
+- `steam_load_klb`
+- `heat_input_mmbtu`
+- `so2_mass_tons`
+- `co2_mass_tons`
+- `nox_mass_tons`
+- `has_reported_measures`
+
+EPA-reported units used in the project:
+
+- Gross Load = MWh
+- Steam Load = thousand lb
+- Heat Input = mmBtu
+- SO2 Mass = short tons
+- CO2 Mass = short tons
+- NOx Mass = short tons
+
+### Missing-Value Semantics
+
+Missing measure values are preserved as missing.
+
+They are not converted to zero.
+
+A record with all six analytical measures missing does not automatically mean:
+
+- zero generation
+- zero emissions
+- retired facility
+- inactive facility
+
+Historical diagnosis showed:
+
+- 49,486 rows with all measures missing
+- 12.14% of all facility-month rows
+- 8 facilities always all-missing
+- 1,592 facilities partially all-missing
+- 214 facilities never all-missing
+
+Several facilities showed valid reported values both before and after all-missing months. Therefore, all-measure null records are retained as source records rather than interpreted as zero activity.
+
+The field `has_reported_measures` is defined as:
+
+- `True`: at least one retained analytical measure is non-null
+- `False`: all retained analytical measures are null
+
+Final counts:
+
+- `True`: 358,049
+- `False`: 49,486
+
+### Negative Values
+
+The historical audit found zero negative observations in:
+
+- `gross_load_mwh`
+- `steam_load_klb`
+- `heat_input_mmbtu`
+- `so2_mass_tons`
+- `co2_mass_tons`
+- `nox_mass_tons`
+
+No rows were altered based on this result.
+
+### Facility Identity Stability
+
+Across the 2001-2025 CAMPD history:
+
+- 0 Facility IDs had multiple facility-name/state combinations
+
+The source facility identifier was therefore retained as the primary facility identifier for the emissions fact.
+
+### EPA Facility ID and EIA Plant Code
+
+A controlled 2025 comparison was performed between EPA CAMPD `facilityId` and EIA plant identifiers.
+
+Against EIA-860:
+
+- EPA facilities tested: 1,253
+- Facility IDs found as EIA Plant Code: 1,228
+- Match rate: 98.00%
+- All 1,228 matched IDs had matching state codes
+
+Against EIA-923:
+
+- EPA facilities tested: 1,253
+- Found in EIA-923 2025: 1,220
+- 2025 match rate: 97.37%
+- Found somewhere in EIA-923 2001-2025: 1,236
+- Never found in EIA-923 2001-2025: 17
+
+This provides strong empirical evidence that EPA `facilityId` generally corresponds to EIA `plant_code`.
+
+However, this relationship is not treated as universal.
+
+The processed emissions fact therefore retains:
+
+- `facility_id`
+- `eia_plant_code_candidate`
+
+with `eia_plant_code_candidate` currently equal to `facility_id`.
+
+EPA facilities that do not exist in EIA-923 are retained rather than dropped.
+
+Plant names are not used as the join key because naming differences are common across EPA and EIA sources.
+
+State is used as a validation field rather than part of the primary join.
+
+### Ingestion Strategy
+
+Production script:
+
+`src/epa_campd_monthly_ingestion.py`
+
+The pipeline:
+
+1. queries one year-month at a time
+2. stores each successful API response in a local raw JSON cache
+3. retries temporary API failures
+4. preserves null measures
+5. validates returned year and month
+6. combines all monthly batches
+7. validates `Period × Facility ID` uniqueness
+8. writes the processed historical fact
+
+Raw cache pattern:
+
+`data/raw/epa_campd_monthly_facility_YYYY_MM.json`
+
+Processed output:
+
+`data/processed/fact_emissions_monthly_2001_2025.csv`
+
+The raw and processed data files are excluded from Git.
+
+### Rate Limiting
+
+During historical ingestion, the API periodically returned:
+
+`HTTP 429 Too Many Requests`
+
+The ingestion script handles this using retry delays.
+
+Successful monthly responses are cached, so rerunning the pipeline does not re-download already completed months.
+
+### Validation Scripts
+
+EPA validation and diagnosis scripts:
+
+- `src/inspect_epa_campd_emissions.py`
+- `src/epa_campd_finalize.py`
+- `validation/epa_campd_eia_plant_id_validation.py`
+- `validation/epa_campd_unmatched_facility_diagnosis.py`
+- `validation/epa_campd_eia923_plant_id_validation.py`
+- `validation/epa_campd_all_missing_diagnosis.py`
+
+### Current Status
+
+EPA CAMPD monthly facility historical ingestion:
+
+`DONE + VALIDATED`
+
+Remaining EPA-related work:
+
+- incremental refresh for post-2025 months
+- final EPA-to-EIA crosswalk policy for Power BI
+- emissions-intensity calculations using matched EIA-923 generation
+- Power BI model integration
+
