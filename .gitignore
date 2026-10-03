@@ -225,3 +225,9 @@ data/raw/*.csv
 data/raw/*.json
 data/processed/*.csv
 data/processed/*.parquet
+
+# Raw EIA archives and extracted source files
+data/raw/*.zip
+data/raw/*.xls
+data/raw/*.xlsx
+data/raw/*_extracted/
