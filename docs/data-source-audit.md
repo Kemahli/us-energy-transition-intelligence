@@ -330,3 +330,279 @@ Remaining EIA-923 work:
 - reconcile API grain with the historical canonical grain
 - formalize treatment of special adjustment records in analytical models
 - incorporate fuel-consumption measures if needed for later analysis
+
+## EIA-860 Annual Electric Generator Data
+
+### Purpose
+
+EIA-860 provides annual generator-level information for U.S. electric power plants.
+
+The dataset is used in this project for:
+
+- installed and operable generating capacity
+- proposed capacity
+- retired capacity
+- canceled or indefinitely postponed projects
+- generator technology
+- prime mover
+- energy source
+- operating dates
+- retirement dates
+- plant and generator identifiers
+
+The historical ingestion currently covers 2001 through 2025.
+
+### Historical Source Coverage
+
+Official annual EIA-860 archives were identified for every year from 2001 through 2025.
+
+The source structure changes substantially over time.
+
+#### 2001-2003
+
+DBF-based files.
+
+Primary generator files:
+
+- GENYxx.dbf: existing generator inventory
+- PRGENYxx.dbf: proposed generator inventory
+- PCGENYxx.dbf: proposed changes to existing generators, where available
+
+PCGEN is not treated as normal generator inventory because the official layout describes it as proposed changes to existing generators.
+
+Examples of modification statuses include:
+
+- fuel conversion
+- repowering
+- capability increase
+- capability decrease
+- deactivation
+- reactivation
+- scheduled retirement
+- ownership change
+
+#### 2004-2008
+
+Older Excel-based structure.
+
+Primary files:
+
+- GenYxx.xls: existing generator inventory
+- PRGenYxx.xls: proposed generator inventory
+- PCGenYxx.xls: proposed changes to existing generators, where available
+
+The existing generator file may contain retired generators. Therefore, source file membership alone is not sufficient to determine analytical capacity status.
+
+#### 2009-2010
+
+Generator information is stored in one workbook with sheets such as:
+
+- Exist
+- Prop
+- Ret_IP
+
+#### 2011-2012
+
+Transitional workbook structure using modern-style sheet names such as:
+
+- Operable
+- Proposed
+- Retired and Canceled
+
+#### 2013-2025
+
+Modern workbook structure:
+
+- Operable
+- Proposed
+- Retired and Canceled
+
+The primary workbook is typically:
+
+3_1_Generator_Y<year>.xlsx
+
+### Canonical Historical Output
+
+The historical pipeline creates:
+
+data/processed/fact_capacity_generators_2001_2025.csv
+
+Current output:
+
+- 628,446 rows
+- 2001-2025 coverage
+- 19,517 unique Plant Codes
+- 43,250 unique observed Plant Code x Generator ID combinations
+- 22 true missing Generator ID records
+- 2 flagged duplicate source-key rows
+
+No generator records are silently removed because of a missing Generator ID.
+
+### Generator Identity
+
+Plant Code x Generator ID is used as the primary natural generator identity candidate when Generator ID is present.
+
+However:
+
+- valid EIA records can have missing Generator IDs
+- "NA" can be a legitimate Generator ID string
+- pandas default CSV parsing interprets "NA" as a missing value
+
+Therefore, downstream CSV readers must preserve literal "NA" values.
+
+Example safe CSV loading approach:
+
+    pd.read_csv(
+        path,
+        keep_default_na=False,
+        na_values=[""]
+    )
+
+Missing Generator ID records remain in the dataset and are explicitly flagged.
+
+### Source Record Types
+
+The canonical dataset preserves source semantics using:
+
+source_record_type
+
+Values include:
+
+- existing
+- operable
+- proposed
+- retired_canceled
+
+These describe where the record came from in the historical EIA-860 structure.
+
+### Analytical Capacity Classification
+
+A separate field:
+
+capacity_bucket
+
+is used for analytical interpretation.
+
+Values:
+
+- operable
+- planned
+- retired
+- canceled_or_postponed
+- other
+
+This distinction prevents retired or canceled capacity from being accidentally included in current installed-capacity measures.
+
+The pipeline also includes:
+
+operable_capacity_flag
+
+This flag identifies generator records that belong to the operable fleet for capacity analysis.
+
+### Status Handling
+
+Examples of operable-fleet statuses include:
+
+- OP
+- SB
+- OS
+- OA
+- BU
+
+Examples of retired/canceled statuses include:
+
+- RE
+- CN
+- IP
+
+Proposed generator statuses such as:
+
+- P
+- L
+- T
+- TS
+- U
+- V
+
+are retained as planned capacity unless the source status explicitly indicates cancellation or indefinite postponement.
+
+Original EIA status values are always preserved.
+
+### 2025 Validation Control
+
+The 2025 historical parser output matches the directly inspected source workbook structure:
+
+- Operable: 27,918 records
+- Proposed: 2,850 records
+- Retired and Canceled: 5,805 records
+
+Nameplate capacity:
+
+- Operable: 1,376,742.0 MW
+- Proposed: 326,487.9 MW
+- Retired and Canceled: 335,223.7 MW
+
+The analytical breakdown is:
+
+- Operable: 1,376,742.0 MW
+- Planned: 326,487.9 MW
+- Retired: 212,117.6 MW
+- Canceled or postponed: 123,106.1 MW
+
+Retired and canceled capacity are therefore excluded from operable-capacity KPIs.
+
+### Duplicate Handling
+
+The historical source contains two records in 2001 sharing the same candidate source key:
+
+- Plant Code 1146
+- Generator ID HMU
+- Status SB
+
+The canonical values are identical.
+
+These records are not silently deleted.
+
+Instead, the pipeline preserves both source rows and flags them using:
+
+duplicate_source_key_flag
+
+Source row provenance is retained using:
+
+source_row_number
+
+### Missing Generator IDs
+
+Some valid EIA generator records do not contain a Generator ID.
+
+These records are preserved and identified using:
+
+missing_generator_id_flag
+
+A specific validation also identified historical generator IDs equal to the literal string "NA".
+
+These must not be confused with missing values.
+
+### Important Analytical Rule
+
+Capacity values in the full 2001-2025 table must not be summed across all years and interpreted as national installed capacity.
+
+Each year is an annual generator snapshot.
+
+For national capacity at a particular point in time:
+
+1. select one report year
+2. use the appropriate analytical capacity bucket or flag
+3. aggregate generator capacity within that annual snapshot
+
+### Current Status
+
+Historical EIA-860 generator and capacity ingestion:
+
+DONE + VALIDATED
+
+Remaining EIA-860 related work:
+
+- optional ingestion of proposed changes to existing generators from historical PCGEN files
+- optional EIA-860M monthly incremental refresh layer
+- later dimensional modeling for DimGenerator, DimPlant, technology, fuel, and geography
